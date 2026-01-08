@@ -15,10 +15,21 @@ function Home() {
     queryKey: ["/api/content"],
   });
 
+  const { data: health } = useQuery<{ status: string; service: string }>({
+    queryKey: ["/api/health"],
+  });
+
   return (
     <div className="p-8 max-w-7xl mx-auto w-full">
       <div className="flex flex-col gap-2 mb-8">
-        <h2 className="text-3xl font-bold tracking-tight">Welcome Back, Explorer!</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold tracking-tight">Welcome Back, Explorer!</h2>
+          {health && (
+            <Badge variant="outline" className="text-[10px] opacity-50">
+              System: {health.status}
+            </Badge>
+          )}
+        </div>
         <p className="text-muted-foreground">What do you want to learn today?</p>
       </div>
       
