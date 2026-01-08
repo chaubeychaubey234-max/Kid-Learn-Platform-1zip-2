@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import React from "react";
 
-interface KidsButtonProps extends React.ComponentProps<typeof Button> {
+interface KidsButtonProps extends Omit<React.ComponentProps<typeof Button>, 'variant'> {
   variant?: "primary" | "secondary" | "outline" | "ghost";
 }
 
