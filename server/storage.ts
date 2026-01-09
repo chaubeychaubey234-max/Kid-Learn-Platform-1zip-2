@@ -22,48 +22,68 @@ export interface IStorage {
   createContent(item: InsertContent): Promise<Content>;
 }
 
-export class DatabaseStorage implements IStorage {
+export class MemStorage implements IStorage {
+  private users: Map<number, User>;
+  private settings: Map<number, ParentalSettings>;
+  private content: Content[];
+  private currentId: number;
+
+  constructor() {
+    this.users = new Map();
+    this.settings = new Map();
+    this.content = [];
+    this.currentId = 1;
+  }
+
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return this.users.get(id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return Array.from(this.users.values()).find((u) => u.username === username);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = this.currentId++;
+    const user: User = { ...insertUser, id, avatar: insertUser.avatar || null };
+    this.users.set(id, user);
     return user;
   }
 
-  async createUser(user: InsertUser): Promise<User> {
-    const [newUser] = await db.insert(users).values(user).returning();
-    return newUser;
-  }
-
   async getSettings(kidId: number): Promise<ParentalSettings | undefined> {
-    const [settings] = await db.select().from(parentalSettings).where(eq(parentalSettings.kidId, kidId));
-    return settings;
+    return this.settings.get(kidId);
   }
 
-  async updateSettings(kidId: number, settings: Partial<ParentalSettings>): Promise<ParentalSettings> {
-    const existing = await this.getSettings(kidId);
+  async updateSettings(kidId: number, updates: Partial<ParentalSettings>): Promise<ParentalSettings> {
+    const existing = this.settings.get(kidId);
     if (!existing) {
-      const [newSettings] = await db.insert(parentalSettings).values({ ...settings, kidId }).returning();
+      const newSettings: ParentalSettings = {
+        id: this.currentId++,
+        kidId,
+        dailyTimeLimitMinutes: updates.dailyTimeLimitMinutes ?? 60,
+        allowStories: updates.allowStories ?? true,
+        allowLearning: updates.allowLearning ?? true,
+        allowCreativity: updates.allowCreativity ?? true,
+        allowMessaging: updates.allowMessaging ?? true,
+      };
+      this.settings.set(kidId, newSettings);
       return newSettings;
     }
-    const [updated] = await db.update(parentalSettings)
-      .set(settings)
-      .where(eq(parentalSettings.kidId, kidId))
-      .returning();
+    const updated = { ...existing, ...updates };
+    this.settings.set(kidId, updated);
     return updated;
   }
 
   async getContent(): Promise<Content[]> {
-    return await db.select().from(content);
+    return this.content;
   }
 
   async createContent(item: InsertContent): Promise<Content> {
-    const [newItem] = await db.insert(content).values(item).returning();
-    return newItem;
+    const id = this.currentId++;
+    const newContent: Content = { ...item, id };
+    this.content.push(newContent);
+    return newContent;
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemStorage();

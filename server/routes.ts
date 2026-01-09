@@ -14,6 +14,37 @@ export async function registerRoutes(
     res.json({ status: "ok", service: "kid-learning-backend" });
   });
 
+  // Auth
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { username, password, role, name, email } = req.body;
+      
+      if (!username || !password || !role) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const user = await storage.createUser({
+        username,
+        password,
+        role,
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+      });
+
+      res.status(201).json({ 
+        id: user.id, 
+        username: user.username, 
+        role: user.role 
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Users
   app.get(api.users.list.path, async (req, res) => {
     // In a real app, this would be filtered or protected
