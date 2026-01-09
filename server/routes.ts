@@ -3,6 +3,10 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
+import { authenticateJWT, authorizeParent } from "./auth-middleware";
+
+const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -59,10 +63,17 @@ export async function registerRoutes(
         return res.status(401).json({ message: "Invalid username or password" });
       }
 
+      const token = jwt.sign(
+        { id: user.id, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "24h" }
+      );
+
       res.json({
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        token
       });
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });
@@ -101,7 +112,7 @@ export async function registerRoutes(
     res.json(settings);
   });
 
-  app.patch(api.settings.update.path, async (req, res) => {
+  app.patch(api.settings.update.path, authenticateJWT, authorizeParent, async (req, res) => {
     try {
       const input = api.settings.update.input.parse(req.body);
       const settings = await storage.updateSettings(Number(req.params.kidId), input);
