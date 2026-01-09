@@ -40,6 +40,11 @@ export function Navbar() {
                 </div>
               </Link>
             ))}
+            <Link href="/login">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all cursor-pointer text-primary border-2 border-primary/20 hover:bg-primary/5 ml-2">
+                Login
+              </div>
+            </Link>
           </div>
         </div>
       </div>
