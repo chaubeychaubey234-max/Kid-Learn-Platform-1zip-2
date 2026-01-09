@@ -1,6 +1,4 @@
-import { apiRequest } from "@/lib/queryClient";
-
-export async function registerUser(data) {
+export async function registerUser(data: any) {
   const response = await fetch("/api/auth/register", {
     method: "POST",
     headers: {
@@ -17,7 +15,7 @@ export async function registerUser(data) {
   return response.json();
 }
 
-export async function loginUser(data) {
+export async function loginUser(data: any) {
   const response = await fetch("/api/auth/login", {
     method: "POST",
     headers: {
