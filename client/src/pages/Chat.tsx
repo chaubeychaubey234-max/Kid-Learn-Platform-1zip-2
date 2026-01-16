@@ -48,13 +48,34 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteUserIdRef = useRef<number | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const ICE_SERVERS = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    // Free TURN servers from Open Relay Project
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ];
 
   useEffect(() => {
@@ -256,6 +277,7 @@ export default function Chat() {
     
     pc.onicecandidate = (event) => {
       if (event.candidate && ws && remoteUserIdRef.current) {
+        console.log("Sending ICE candidate to:", remoteUserIdRef.current);
         ws.send(JSON.stringify({
           type: "ice-candidate",
           targetUserId: remoteUserIdRef.current,
@@ -264,9 +286,39 @@ export default function Chat() {
       }
     };
     
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE connection state:", pc.iceConnectionState);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        console.error("ICE connection failed or disconnected");
+      }
+    };
+    
+    pc.onconnectionstatechange = () => {
+      console.log("Connection state:", pc.connectionState);
+    };
+    
     pc.ontrack = (event) => {
+      console.log("Received remote track:", event.track.kind);
+      
+      // Create or get the remote stream
+      if (!remoteStreamRef.current) {
+        remoteStreamRef.current = new MediaStream();
+      }
+      
+      // Add the track to our remote stream
+      remoteStreamRef.current.addTrack(event.track);
+      
+      // Attach to video element (handles both audio and video)
       if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0];
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        // Ensure video plays
+        remoteVideoRef.current.play().catch(e => console.log("Video play error:", e));
+      }
+      
+      // Also attach to audio element for voice calls
+      if (remoteAudioRef.current && event.track.kind === "audio") {
+        remoteAudioRef.current.srcObject = remoteStreamRef.current;
+        remoteAudioRef.current.play().catch(e => console.log("Audio play error:", e));
       }
     };
     
@@ -280,12 +332,18 @@ export default function Chat() {
     const friendUserId = selectedFriend.userId === user.id ? selectedFriend.friendId : selectedFriend.userId;
     
     try {
+      console.log("Starting", type, "call to user:", friendUserId);
+      
+      // Reset remote stream for new call
+      remoteStreamRef.current = null;
+      
       const constraints = {
         audio: true,
         video: type === "video",
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("Got local stream with tracks:", stream.getTracks().map(t => t.kind));
       localStreamRef.current = stream;
       
       if (localVideoRef.current && type === "video") {
@@ -316,12 +374,18 @@ export default function Chat() {
     if (!incomingCall || !ws) return;
     
     try {
+      console.log("Accepting", incomingCall.callType, "call from user:", incomingCall.fromUserId);
+      
+      // Reset remote stream for new call
+      remoteStreamRef.current = null;
+      
       const constraints = {
         audio: true,
         video: incomingCall.callType === "video",
       };
       
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("Got local stream with tracks:", stream.getTracks().map(t => t.kind));
       localStreamRef.current = stream;
       
       if (localVideoRef.current && incomingCall.callType === "video") {
@@ -373,9 +437,16 @@ export default function Chat() {
   };
 
   const cleanupCall = () => {
+    console.log("Cleaning up call...");
+    
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
+    }
+    
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach(track => track.stop());
+      remoteStreamRef.current = null;
     }
     
     if (peerConnectionRef.current) {
@@ -389,6 +460,10 @@ export default function Chat() {
     
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
+    }
+    
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
     }
     
     remoteUserIdRef.current = null;
@@ -431,6 +506,26 @@ export default function Chat() {
 
       {callState.active && (
         <div className="fixed inset-0 bg-black z-40 flex flex-col">
+          {/* Hidden audio element for voice calls */}
+          <audio ref={remoteAudioRef} autoPlay style={{ display: 'none' }} />
+          
+          {/* Hidden video elements - always present for stream attachment */}
+          <video 
+            ref={remoteVideoRef} 
+            autoPlay 
+            playsInline 
+            style={{ display: callState.status === "connected" && callState.type === "video" ? 'block' : 'none' }}
+            className="max-h-[70vh] max-w-full rounded-lg bg-gray-800 mx-auto"
+          />
+          <video 
+            ref={localVideoRef} 
+            autoPlay 
+            playsInline 
+            muted 
+            style={{ display: callState.status === "connected" && callState.type === "video" ? 'block' : 'none' }}
+            className="absolute bottom-24 right-4 w-32 h-24 rounded-lg border-2 border-white"
+          />
+          
           <div className="flex-1 flex items-center justify-center gap-4 p-4">
             {callState.status === "calling" && (
               <div className="text-center text-white">
@@ -442,12 +537,6 @@ export default function Chat() {
                 <p className="text-2xl font-bold mb-2">Calling...</p>
                 <p className="text-muted-foreground">Waiting for answer</p>
               </div>
-            )}
-            {callState.status === "connected" && callState.type === "video" && (
-              <>
-                <video ref={remoteVideoRef} autoPlay playsInline className="max-h-full max-w-full rounded-lg bg-gray-800" />
-                <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-24 right-4 w-32 h-24 rounded-lg border-2 border-white" />
-              </>
             )}
             {callState.status === "connected" && callState.type === "voice" && (
               <div className="text-center text-white">
