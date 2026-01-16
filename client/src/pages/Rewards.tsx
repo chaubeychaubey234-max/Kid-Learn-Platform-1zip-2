@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { KidsCard } from "@/components/kids-card";
 import { Progress } from "@/components/ui/progress";
@@ -42,12 +42,26 @@ export default function Rewards() {
   const [loading, setLoading] = useState(true);
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationBadge, setCelebrationBadge] = useState<Badge | null>(null);
+  const previousBadgeIds = useRef<number[]>([]);
 
   useEffect(() => {
     if (user) {
       fetchDashboard();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (data?.earnedBadges && data.earnedBadges.length > 0) {
+      const currentBadgeIds = data.earnedBadges.map(b => b.id);
+      const newBadges = data.earnedBadges.filter(b => !previousBadgeIds.current.includes(b.id));
+      
+      if (previousBadgeIds.current.length > 0 && newBadges.length > 0) {
+        triggerCelebration(newBadges[newBadges.length - 1]);
+      }
+      
+      previousBadgeIds.current = currentBadgeIds;
+    }
+  }, [data?.earnedBadges]);
 
   const fetchDashboard = async () => {
     try {

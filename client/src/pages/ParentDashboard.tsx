@@ -10,6 +10,32 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import type { LucideIcon } from "lucide-react";
+
+function ToggleCard({ icon: Icon, label, description, checked, onChange, colorClass }: {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (val: boolean) => void;
+  colorClass: string;
+}) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 ${colorClass} rounded-full flex items-center justify-center text-white`}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
 
 interface Child {
   id: number;

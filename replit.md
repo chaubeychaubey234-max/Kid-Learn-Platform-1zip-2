@@ -19,7 +19,15 @@ KidSpace is a child-safe video platform with comprehensive parental controls. Th
 5. **Voice/Video Calling**: WebRTC-based calling between approved friends
 6. **AI Chatbot**: Child-safe AI assistant using Cerebras AI with content filtering
 7. **Creator Dashboard**: Video upload interface for creators
-8. **Parent Dashboard**: Child management, permissions, friend approval, screen time controls
+8. **Parent Dashboard**: Child management, permissions, friend approval, screen time controls, gamification settings
+9. **Rewards System**: Gamification with points, badges, and feature unlocks to encourage learning
+
+### Gamification System
+- **Points**: Children earn points for watching videos (+5), asking chatbot questions (+2), and completing daily video goals (+10 bonus)
+- **Badges**: 5 default badges unlock at 50, 100, 200, 300, 500 points with visual celebrations
+- **Feature Unlocks**: Some badges unlock extra features (games, videos, shorts)
+- **Parent Controls**: Parents can customize point values, daily limits, and enable/disable individual reward features per child
+- **Celebration Popup**: Animated popup with confetti when children unlock new badges
 
 ### Security Features
 - JWT-based authentication
