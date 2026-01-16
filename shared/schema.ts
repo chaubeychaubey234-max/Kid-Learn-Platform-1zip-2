@@ -88,6 +88,56 @@ export const chatbotConversations = pgTable("chatbot_conversations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Gamification System Tables
+export const childPoints = pgTable("child_points", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull().unique(),
+  totalPoints: integer("total_points").default(0).notNull(),
+  dailyVideosWatched: integer("daily_videos_watched").default(0),
+  dailyChatbotQuestions: integer("daily_chatbot_questions").default(0),
+  lastActivityDate: text("last_activity_date"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const pointTransactions = pgTable("point_transactions", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull(),
+  points: integer("points").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const badges = pgTable("badges", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull(),
+  pointsRequired: integer("points_required").notNull(),
+  unlocksFeature: text("unlocks_feature"),
+  color: text("color").default("#FFD700"),
+});
+
+export const earnedBadges = pgTable("earned_badges", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull(),
+  badgeId: integer("badge_id").notNull(),
+  earnedAt: timestamp("earned_at").defaultNow(),
+});
+
+export const gamificationSettings = pgTable("gamification_settings", {
+  id: serial("id").primaryKey(),
+  childId: integer("child_id").notNull().unique(),
+  pointsPerVideo: integer("points_per_video").default(5),
+  pointsPerDailyLimit: integer("points_per_daily_limit").default(10),
+  pointsPerChatbotQuestion: integer("points_per_chatbot_question").default(2),
+  pointsPerScreenTimeLimit: integer("points_per_screen_time_limit").default(10),
+  dailyVideoLimit: integer("daily_video_limit").default(5),
+  enableVideoPoints: boolean("enable_video_points").default(true),
+  enableChatbotPoints: boolean("enable_chatbot_points").default(true),
+  enableScreenTimePoints: boolean("enable_screen_time_points").default(true),
+  enableBadges: boolean("enable_badges").default(true),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertSettingsSchema = createInsertSchema(parentalSettings).omit({ id: true });
 export const insertContentSchema = createInsertSchema(content).omit({ id: true, createdAt: true });
@@ -96,6 +146,11 @@ export const insertFriendSchema = createInsertSchema(friends).omit({ id: true, c
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 export const insertCallHistorySchema = createInsertSchema(callHistory).omit({ id: true, startedAt: true });
 export const insertChatbotConversationSchema = createInsertSchema(chatbotConversations).omit({ id: true, createdAt: true });
+export const insertChildPointsSchema = createInsertSchema(childPoints).omit({ id: true, updatedAt: true });
+export const insertPointTransactionSchema = createInsertSchema(pointTransactions).omit({ id: true, createdAt: true });
+export const insertBadgeSchema = createInsertSchema(badges).omit({ id: true });
+export const insertEarnedBadgeSchema = createInsertSchema(earnedBadges).omit({ id: true, earnedAt: true });
+export const insertGamificationSettingsSchema = createInsertSchema(gamificationSettings).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -108,3 +163,8 @@ export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type CallHistory = typeof callHistory.$inferSelect;
 export type ChatbotConversation = typeof chatbotConversations.$inferSelect;
+export type ChildPoints = typeof childPoints.$inferSelect;
+export type PointTransaction = typeof pointTransactions.$inferSelect;
+export type Badge = typeof badges.$inferSelect;
+export type EarnedBadge = typeof earnedBadges.$inferSelect;
+export type GamificationSettings = typeof gamificationSettings.$inferSelect;

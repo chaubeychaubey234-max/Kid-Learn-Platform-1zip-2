@@ -1,13 +1,15 @@
 import { db } from "./db";
 import {
   users, parentalSettings, content, friends, friendRequests, messages, callHistory, chatbotConversations,
+  childPoints, pointTransactions, badges, earnedBadges, gamificationSettings,
   type User, type InsertUser,
   type ParentalSettings,
   type Content, type InsertContent,
   type Friend, type FriendRequest, type Message, type InsertMessage,
-  type CallHistory, type ChatbotConversation
+  type CallHistory, type ChatbotConversation,
+  type ChildPoints, type PointTransaction, type Badge, type EarnedBadge, type GamificationSettings
 } from "@shared/schema";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, lte } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -224,6 +226,178 @@ export class DatabaseStorage implements IStorage {
       response: botResponse,
     }).returning();
     return conversation;
+  }
+
+  // Gamification Methods
+  async getChildPoints(childId: number): Promise<ChildPoints | undefined> {
+    const [points] = await db.select().from(childPoints).where(eq(childPoints.childId, childId));
+    return points;
+  }
+
+  async getOrCreateChildPoints(childId: number): Promise<ChildPoints> {
+    let points = await this.getChildPoints(childId);
+    if (!points) {
+      const today = new Date().toISOString().split('T')[0];
+      const [newPoints] = await db.insert(childPoints).values({
+        childId,
+        totalPoints: 0,
+        dailyVideosWatched: 0,
+        dailyChatbotQuestions: 0,
+        lastActivityDate: today,
+      }).returning();
+      points = newPoints;
+    }
+    return points;
+  }
+
+  async addPoints(childId: number, points: number, reason: string): Promise<{ childPoints: ChildPoints; newBadges: Badge[] }> {
+    const today = new Date().toISOString().split('T')[0];
+    let current = await this.getOrCreateChildPoints(childId);
+    
+    // Reset daily counters if new day
+    if (current.lastActivityDate !== today) {
+      await db.update(childPoints)
+        .set({ dailyVideosWatched: 0, dailyChatbotQuestions: 0, lastActivityDate: today })
+        .where(eq(childPoints.childId, childId));
+      current = await this.getOrCreateChildPoints(childId);
+    }
+    
+    const newTotal = current.totalPoints + points;
+    
+    await db.update(childPoints)
+      .set({ totalPoints: newTotal, updatedAt: new Date() })
+      .where(eq(childPoints.childId, childId));
+    
+    await db.insert(pointTransactions).values({
+      childId,
+      points,
+      reason,
+    });
+    
+    // Check for new badges
+    const newBadges = await this.checkAndAwardBadges(childId, newTotal);
+    
+    const updated = await this.getOrCreateChildPoints(childId);
+    return { childPoints: updated, newBadges };
+  }
+
+  async incrementDailyVideoCount(childId: number): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    let current = await this.getOrCreateChildPoints(childId);
+    
+    if (current.lastActivityDate !== today) {
+      await db.update(childPoints)
+        .set({ dailyVideosWatched: 1, lastActivityDate: today })
+        .where(eq(childPoints.childId, childId));
+      return 1;
+    }
+    
+    const newCount = (current.dailyVideosWatched || 0) + 1;
+    await db.update(childPoints)
+      .set({ dailyVideosWatched: newCount })
+      .where(eq(childPoints.childId, childId));
+    return newCount;
+  }
+
+  async incrementDailyChatbotCount(childId: number): Promise<number> {
+    const today = new Date().toISOString().split('T')[0];
+    let current = await this.getOrCreateChildPoints(childId);
+    
+    if (current.lastActivityDate !== today) {
+      await db.update(childPoints)
+        .set({ dailyChatbotQuestions: 1, lastActivityDate: today })
+        .where(eq(childPoints.childId, childId));
+      return 1;
+    }
+    
+    const newCount = (current.dailyChatbotQuestions || 0) + 1;
+    await db.update(childPoints)
+      .set({ dailyChatbotQuestions: newCount })
+      .where(eq(childPoints.childId, childId));
+    return newCount;
+  }
+
+  async getAllBadges(): Promise<Badge[]> {
+    return db.select().from(badges).orderBy(badges.pointsRequired);
+  }
+
+  async getEarnedBadges(childId: number): Promise<(EarnedBadge & { badge: Badge })[]> {
+    const earned = await db.select().from(earnedBadges).where(eq(earnedBadges.childId, childId));
+    const allBadges = await this.getAllBadges();
+    
+    return earned.map(e => ({
+      ...e,
+      badge: allBadges.find(b => b.id === e.badgeId)!
+    })).filter(e => e.badge);
+  }
+
+  async checkAndAwardBadges(childId: number, totalPoints: number): Promise<Badge[]> {
+    const allBadges = await this.getAllBadges();
+    const earnedBadgesList = await db.select().from(earnedBadges).where(eq(earnedBadges.childId, childId));
+    const earnedBadgeIds = new Set(earnedBadgesList.map(e => e.badgeId));
+    
+    const newBadges: Badge[] = [];
+    
+    for (const badge of allBadges) {
+      if (totalPoints >= badge.pointsRequired && !earnedBadgeIds.has(badge.id)) {
+        await db.insert(earnedBadges).values({
+          childId,
+          badgeId: badge.id,
+        });
+        newBadges.push(badge);
+      }
+    }
+    
+    return newBadges;
+  }
+
+  async getGamificationSettings(childId: number): Promise<GamificationSettings | undefined> {
+    const [settings] = await db.select().from(gamificationSettings).where(eq(gamificationSettings.childId, childId));
+    return settings;
+  }
+
+  async getOrCreateGamificationSettings(childId: number): Promise<GamificationSettings> {
+    let settings = await this.getGamificationSettings(childId);
+    if (!settings) {
+      const [newSettings] = await db.insert(gamificationSettings).values({
+        childId,
+      }).returning();
+      settings = newSettings;
+    }
+    return settings;
+  }
+
+  async updateGamificationSettings(childId: number, updates: Partial<GamificationSettings>): Promise<GamificationSettings> {
+    await this.getOrCreateGamificationSettings(childId);
+    const [updated] = await db.update(gamificationSettings)
+      .set(updates)
+      .where(eq(gamificationSettings.childId, childId))
+      .returning();
+    return updated;
+  }
+
+  async getPointTransactions(childId: number, limit = 20): Promise<PointTransaction[]> {
+    return db.select().from(pointTransactions)
+      .where(eq(pointTransactions.childId, childId))
+      .orderBy(desc(pointTransactions.createdAt))
+      .limit(limit);
+  }
+
+  async seedDefaultBadges(): Promise<void> {
+    const existing = await this.getAllBadges();
+    if (existing.length > 0) return;
+    
+    const defaultBadges = [
+      { name: "Starter Star", description: "You're just getting started! Keep going!", iconName: "Star", pointsRequired: 50, color: "#FFD700", unlocksFeature: null },
+      { name: "Creative Kid", description: "You're becoming more creative every day!", iconName: "Palette", pointsRequired: 100, color: "#FF6B6B", unlocksFeature: "extra_games" },
+      { name: "Smart Thinker", description: "Your brain is growing stronger!", iconName: "Brain", pointsRequired: 200, color: "#4ECDC4", unlocksFeature: "extra_videos" },
+      { name: "Explorer", description: "You love discovering new things!", iconName: "Compass", pointsRequired: 300, color: "#45B7D1", unlocksFeature: "shorts" },
+      { name: "Super Learner", description: "You're a learning superstar!", iconName: "Trophy", pointsRequired: 500, color: "#96CEB4", unlocksFeature: "premium_content" },
+    ];
+    
+    for (const badge of defaultBadges) {
+      await db.insert(badges).values(badge);
+    }
   }
 }
 
