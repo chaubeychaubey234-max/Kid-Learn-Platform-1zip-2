@@ -63,6 +63,9 @@ export const messages = pgTable("messages", {
   senderId: integer("sender_id").notNull(),
   receiverId: integer("receiver_id").notNull(),
   content: text("content").notNull(),
+  fileUrl: text("file_url"),
+  fileType: text("file_type"),
+  fileName: text("file_name"),
   createdAt: timestamp("created_at").defaultNow(),
   read: boolean("read").default(false),
 });

@@ -4,7 +4,7 @@ import { KidsCard } from "@/components/kids-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Send, Phone, Video, ArrowLeft, UserPlus, PhoneOff, VideoOff } from "lucide-react";
+import { Send, Phone, Video, ArrowLeft, UserPlus, PhoneOff, VideoOff, Paperclip, FileText, Image as ImageIcon, X } from "lucide-react";
 
 interface Friend {
   id: number;
@@ -19,6 +19,9 @@ interface Message {
   senderId: number;
   receiverId: number;
   content: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileName?: string;
   createdAt: string;
 }
 
@@ -53,6 +56,11 @@ export default function Chat() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteUserIdRef = useRef<number | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
 
   const ICE_SERVERS = [
     { urls: "stun:stun.l.google.com:19302" },
@@ -174,6 +182,9 @@ export default function Chat() {
           senderId: data.senderId,
           receiverId: user!.id,
           content: data.content,
+          fileUrl: data.fileUrl,
+          fileType: data.fileType,
+          fileName: data.fileName,
           createdAt: new Date().toISOString(),
         }]);
       }
@@ -231,12 +242,87 @@ export default function Chat() {
     fetchMessages(friendUserId);
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Only PNG, JPG, JPEG, and PDF files are allowed.');
+      return;
+    }
+    
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File too large. Maximum size is 10MB.');
+      return;
+    }
+    
+    setSelectedFile(file);
+    
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => setUploadPreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setUploadPreview(null);
+    }
+  };
+  
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setUploadPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedFriend || !user) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedFriend || !user) return;
 
     const friendUserId = selectedFriend.userId === user.id ? selectedFriend.friendId : selectedFriend.userId;
 
     try {
+      let fileUrl: string | undefined;
+      let fileType: string | undefined;
+      let fileName: string | undefined;
+      
+      if (selectedFile) {
+        setIsUploading(true);
+        
+        const urlResponse = await fetch("/api/chat/upload-url", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...getAuthHeader(),
+          },
+          body: JSON.stringify({
+            name: selectedFile.name,
+            size: selectedFile.size,
+            contentType: selectedFile.type,
+          }),
+        });
+        
+        if (!urlResponse.ok) {
+          const error = await urlResponse.json();
+          throw new Error(error.error || 'Failed to get upload URL');
+        }
+        
+        const { uploadURL, objectPath } = await urlResponse.json();
+        
+        await fetch(uploadURL, {
+          method: "PUT",
+          body: selectedFile,
+          headers: { "Content-Type": selectedFile.type },
+        });
+        
+        fileUrl = objectPath;
+        fileType = selectedFile.type;
+        fileName = selectedFile.name;
+        
+        setIsUploading(false);
+        clearSelectedFile();
+      }
+
       const response = await fetch("/api/messages", {
         method: "POST",
         headers: {
@@ -246,7 +332,10 @@ export default function Chat() {
         body: JSON.stringify({
           senderId: user.id,
           receiverId: friendUserId,
-          content: newMessage,
+          content: newMessage || (fileName ? `Sent ${fileName}` : 'Sent a file'),
+          fileUrl,
+          fileType,
+          fileName,
         }),
       });
 
@@ -258,7 +347,10 @@ export default function Chat() {
           ws.send(JSON.stringify({
             type: "chat-message",
             receiverId: friendUserId,
-            content: newMessage,
+            content: newMessage || (fileName ? `Sent ${fileName}` : 'Sent a file'),
+            fileUrl,
+            fileType,
+            fileName,
           }));
         }
         
@@ -266,6 +358,8 @@ export default function Chat() {
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+      setIsUploading(false);
+      alert("Failed to send message. Please try again.");
     }
   };
 
@@ -665,22 +759,87 @@ export default function Chat() {
                       : "bg-white border"
                   }`}
                 >
-                  {message.content}
+                  {message.fileUrl && message.fileType?.startsWith('image/') && (
+                    <img 
+                      src={message.fileUrl} 
+                      alt={message.fileName || 'Shared image'} 
+                      className="max-w-full rounded-lg mb-2 cursor-pointer"
+                      onClick={() => window.open(message.fileUrl, '_blank')}
+                    />
+                  )}
+                  {message.fileUrl && message.fileType === 'application/pdf' && (
+                    <a 
+                      href={message.fileUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className={`flex items-center gap-2 p-2 rounded-lg mb-2 ${
+                        message.senderId === user?.id 
+                          ? 'bg-blue-600 hover:bg-blue-700' 
+                          : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                    >
+                      <FileText className="w-5 h-5" />
+                      <span className="text-sm underline">{message.fileName || 'View PDF'}</span>
+                    </a>
+                  )}
+                  {message.content && !message.content.startsWith('Sent ') && message.content}
+                  {message.content && message.content.startsWith('Sent ') && !message.fileUrl && message.content}
                 </div>
               </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
 
+          {selectedFile && (
+            <div className="p-3 border-t bg-gray-50 flex items-center gap-3">
+              {uploadPreview ? (
+                <img src={uploadPreview} alt="Preview" className="w-16 h-16 object-cover rounded-lg" />
+              ) : (
+                <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <FileText className="w-8 h-8 text-blue-500" />
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {(selectedFile.size / 1024).toFixed(1)} KB
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={clearSelectedFile}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+
           <div className="p-4 border-t bg-white flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,application/pdf"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              <Paperclip className="w-5 h-5" />
+            </Button>
             <Input
               placeholder="Type a message..."
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              onKeyPress={(e) => e.key === "Enter" && !isUploading && sendMessage()}
+              disabled={isUploading}
             />
-            <Button onClick={sendMessage}>
-              <Send className="w-5 h-5" />
+            <Button onClick={sendMessage} disabled={isUploading}>
+              {isUploading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
             </Button>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { z } from "zod";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { authenticateJWT, authorizeParent } from "./auth-middleware";
+import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
 const SALT_ROUNDS = 10;
@@ -53,6 +54,9 @@ export async function registerRoutes(
               type: "chat-message",
               senderId: userId,
               content: message.content,
+              fileUrl: message.fileUrl,
+              fileType: message.fileType,
+              fileName: message.fileName,
             }));
           }
         }
@@ -70,6 +74,50 @@ export async function registerRoutes(
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", service: "kid-video-platform" });
+  });
+
+  // Register object storage routes for file serving
+  registerObjectStorageRoutes(app);
+
+  // Authenticated file upload endpoint for chat attachments
+  const objectStorageService = new ObjectStorageService();
+  const ALLOWED_FILE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'application/pdf'];
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  app.post("/api/chat/upload-url", authenticateJWT, async (req, res) => {
+    try {
+      const { name, size, contentType } = req.body;
+
+      if (!name || !contentType) {
+        return res.status(400).json({ error: "Missing required fields: name, contentType" });
+      }
+
+      // Validate file type
+      if (!ALLOWED_FILE_TYPES.includes(contentType)) {
+        return res.status(400).json({ 
+          error: "Invalid file type. Only PNG, JPG, JPEG, and PDF files are allowed." 
+        });
+      }
+
+      // Validate file size
+      if (size && size > MAX_FILE_SIZE) {
+        return res.status(400).json({ 
+          error: "File too large. Maximum size is 10MB." 
+        });
+      }
+
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+      res.json({
+        uploadURL,
+        objectPath,
+        metadata: { name, size, contentType },
+      });
+    } catch (error) {
+      console.error("Error generating upload URL:", error);
+      res.status(500).json({ error: "Failed to generate upload URL" });
+    }
   });
 
   app.post("/api/auth/register", async (req, res) => {
@@ -397,7 +445,7 @@ export async function registerRoutes(
 
   app.post(api.chatbot.chat.path, authenticateJWT, async (req, res) => {
     try {
-      const { userId, message } = req.body;
+      const { userId, message, fileUrl, fileType, fileName, fileBase64 } = req.body;
 
       const blockedTopics = [
         "violence", "violent", "kill", "murder", "fight", "weapon", "gun", "knife",
@@ -417,6 +465,20 @@ export async function registerRoutes(
       }
 
       const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
+      
+      // Handle image files - acknowledge and offer to help
+      if (fileType?.startsWith('image/')) {
+        const imageResponse = `I can see you shared a picture called "${fileName}"! That's so cool! While I can't look at pictures directly, I'd love to help you with it! Can you tell me what's in the picture? Or maybe you have a question about something you see? I'm here to help you learn and have fun!`;
+        await storage.createChatbotConversation(userId, `[Image: ${fileName}] ${message}`, imageResponse);
+        return res.json({ response: imageResponse });
+      }
+
+      // Handle PDF files
+      if (fileType === 'application/pdf') {
+        const pdfResponse = `I can see you shared a PDF file called "${fileName}"! That's awesome! While I can't read PDFs directly, I'd love to help you understand it. Can you tell me what the PDF is about or read me a part of it? Then I can help explain it in a fun way!`;
+        await storage.createChatbotConversation(userId, `[PDF: ${fileName}] ${message}`, pdfResponse);
+        return res.json({ response: pdfResponse });
+      }
       
       if (!CEREBRAS_API_KEY) {
         const defaultResponse = "Hi there! I'm your friendly assistant. I'm here to help you learn and have fun! What would you like to talk about?";
