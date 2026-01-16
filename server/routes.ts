@@ -384,23 +384,22 @@ export async function registerRoutes(
         return res.json({ response: safeResponse });
       }
 
-      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+      const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
       
-      if (!OPENAI_API_KEY) {
+      if (!CEREBRAS_API_KEY) {
         const defaultResponse = "Hi there! I'm your friendly assistant. I'm here to help you learn and have fun! What would you like to talk about?";
         await storage.createChatbotConversation(userId, message, defaultResponse);
         return res.json({ response: defaultResponse });
       }
 
-      // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Authorization": `Bearer ${CEREBRAS_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "llama3.1-8b",
           messages: [
             {
               role: "system",
@@ -415,7 +414,7 @@ export async function registerRoutes(
       const data = await response.json();
       
       if (data.error) {
-        console.error("OpenAI API error:", data.error);
+        console.error("Cerebras API error:", data.error);
         const errorResponse = "I'm having a little trouble right now. Let's try again in a moment!";
         await storage.createChatbotConversation(userId, message, errorResponse);
         return res.json({ response: errorResponse });
