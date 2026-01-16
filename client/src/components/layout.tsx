@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload } from "lucide-react";
+import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -14,6 +14,7 @@ export function Navbar() {
     ...(user?.role === "child" ? [
       { name: "Chat", href: "/chat", icon: MessageCircle },
       { name: "AI Buddy", href: "/chatbot", icon: Bot },
+      { name: "Rewards", href: "/rewards", icon: Trophy },
     ] : []),
     ...(user?.role === "parent" ? [{ name: "Parents", href: "/dashboard", icon: Shield }] : []),
     ...(user?.role === "creator" ? [{ name: "Upload", href: "/creator", icon: Upload }] : []),

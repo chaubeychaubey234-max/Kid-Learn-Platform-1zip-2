@@ -1,7 +1,7 @@
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Shield, Clock, BookOpen, PenTool, MessageCircle, Save, UserPlus, Users, Check, X, Compass, Film, Bot } from "lucide-react";
+import { Shield, Clock, BookOpen, PenTool, MessageCircle, Save, UserPlus, Users, Check, X, Compass, Film, Bot, Trophy, Star, Video } from "lucide-react";
 import { useState, useEffect } from "react";
 import { clsx } from "clsx";
 import { KidsCard } from "@/components/kids-card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 
 interface Child {
   id: number;
@@ -37,6 +38,21 @@ export default function ParentDashboard() {
   const [newChildPassword, setNewChildPassword] = useState("");
   const [addingChild, setAddingChild] = useState(false);
   
+  // Gamification state
+  const [gamificationData, setGamificationData] = useState<any>(null);
+  const [gamificationSettings, setGamificationSettings] = useState({
+    pointsPerVideo: 5,
+    pointsPerDailyLimit: 10,
+    pointsPerChatbotQuestion: 2,
+    pointsPerScreenTimeLimit: 10,
+    dailyVideoLimit: 5,
+    enableVideoPoints: true,
+    enableChatbotPoints: true,
+    enableScreenTimePoints: true,
+    enableBadges: true,
+  });
+  const [savingGamification, setSavingGamification] = useState(false);
+  
   const { data: settings, isLoading: settingsLoading } = useSettings(selectedChildId || 0);
   const updateSettings = useUpdateSettings();
   
@@ -57,6 +73,12 @@ export default function ParentDashboard() {
       fetchPendingRequests();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (selectedChildId) {
+      fetchGamificationData();
+    }
+  }, [selectedChildId]);
 
   useEffect(() => {
     if (settings) {
@@ -98,6 +120,58 @@ export default function ParentDashboard() {
     } catch (err) {
       console.error("Failed to fetch pending requests:", err);
     }
+  };
+
+  const fetchGamificationData = async () => {
+    if (!selectedChildId) return;
+    try {
+      const [dashboardRes, settingsRes] = await Promise.all([
+        fetch(`/api/gamification/dashboard/${selectedChildId}`, { headers: getAuthHeader() }),
+        fetch(`/api/gamification/settings/${selectedChildId}`, { headers: getAuthHeader() })
+      ]);
+      const dashboard = await dashboardRes.json();
+      const settings = await settingsRes.json();
+      setGamificationData(dashboard);
+      setGamificationSettings({
+        pointsPerVideo: settings.pointsPerVideo ?? 5,
+        pointsPerDailyLimit: settings.pointsPerDailyLimit ?? 10,
+        pointsPerChatbotQuestion: settings.pointsPerChatbotQuestion ?? 2,
+        pointsPerScreenTimeLimit: settings.pointsPerScreenTimeLimit ?? 10,
+        dailyVideoLimit: settings.dailyVideoLimit ?? 5,
+        enableVideoPoints: settings.enableVideoPoints ?? true,
+        enableChatbotPoints: settings.enableChatbotPoints ?? true,
+        enableScreenTimePoints: settings.enableScreenTimePoints ?? true,
+        enableBadges: settings.enableBadges ?? true,
+      });
+    } catch (err) {
+      console.error("Failed to fetch gamification data:", err);
+    }
+  };
+
+  const saveGamificationSettings = async () => {
+    if (!selectedChildId) return;
+    setSavingGamification(true);
+    try {
+      await fetch(`/api/gamification/settings/${selectedChildId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify(gamificationSettings),
+      });
+      toast({
+        title: "Settings Saved!",
+        description: "Reward settings have been updated.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not save settings.",
+      });
+    }
+    setSavingGamification(false);
   };
 
   const addChild = async () => {
@@ -255,9 +329,10 @@ export default function ParentDashboard() {
       </header>
 
       <Tabs defaultValue="children" className="space-y-6">
-        <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto">
+        <TabsList className="grid grid-cols-4 w-full max-w-lg mx-auto">
           <TabsTrigger value="children">Children</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="rewards">Rewards</TabsTrigger>
           <TabsTrigger value="friends">Friends</TabsTrigger>
         </TabsList>
 
@@ -380,6 +455,143 @@ export default function ParentDashboard() {
               <Button onClick={handleSave} className="w-full py-6 text-lg" disabled={updateSettings.isPending}>
                 <Save className="w-5 h-5 mr-2" />
                 {updateSettings.isPending ? "Saving..." : "Save Settings"}
+              </Button>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="rewards" className="space-y-6">
+          {!selectedChildId ? (
+            <KidsCard className="p-8 text-center">
+              <Trophy className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+              <p className="text-muted-foreground">
+                Please select a child from the "Children" tab to manage their rewards.
+              </p>
+            </KidsCard>
+          ) : (
+            <>
+              {/* Child Progress Overview */}
+              {gamificationData && (
+                <KidsCard className="p-6 bg-gradient-to-r from-yellow-50 to-orange-50">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-14 h-14 bg-yellow-500 rounded-full flex items-center justify-center text-white">
+                      <Star className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold">{children.find(c => c.id === selectedChildId)?.username}'s Progress</h2>
+                      <p className="text-4xl font-black text-yellow-600">{gamificationData.points?.totalPoints || 0} points</p>
+                    </div>
+                  </div>
+                  
+                  {gamificationData.nextBadge && (
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span>Next badge: {gamificationData.nextBadge.name}</span>
+                        <span>{gamificationData.progressToNext}%</span>
+                      </div>
+                      <Progress value={gamificationData.progressToNext} className="h-3" />
+                    </div>
+                  )}
+                  
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div className="text-center p-3 bg-white rounded-xl">
+                      <p className="text-2xl font-bold text-blue-500">{gamificationData.points?.dailyVideosWatched || 0}</p>
+                      <p className="text-xs text-muted-foreground">Videos Today</p>
+                    </div>
+                    <div className="text-center p-3 bg-white rounded-xl">
+                      <p className="text-2xl font-bold text-purple-500">{gamificationData.earnedBadges?.length || 0}</p>
+                      <p className="text-xs text-muted-foreground">Badges Earned</p>
+                    </div>
+                  </div>
+                </KidsCard>
+              )}
+
+              {/* Point Settings */}
+              <KidsCard className="p-6">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-yellow-500" />
+                  Point Settings
+                </h2>
+                
+                <div className="grid gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Points per Video</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={gamificationSettings.pointsPerVideo}
+                        onChange={(e) => setGamificationSettings({...gamificationSettings, pointsPerVideo: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div>
+                      <Label>Daily Video Limit</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={gamificationSettings.dailyVideoLimit}
+                        onChange={(e) => setGamificationSettings({...gamificationSettings, dailyVideoLimit: parseInt(e.target.value) || 1})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Bonus for Daily Goal</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={gamificationSettings.pointsPerDailyLimit}
+                        onChange={(e) => setGamificationSettings({...gamificationSettings, pointsPerDailyLimit: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div>
+                      <Label>Points per Chatbot Question</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={gamificationSettings.pointsPerChatbotQuestion}
+                        onChange={(e) => setGamificationSettings({...gamificationSettings, pointsPerChatbotQuestion: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </KidsCard>
+
+              {/* Enable/Disable Features */}
+              <KidsCard className="p-6">
+                <h2 className="text-xl font-bold mb-4">Enable/Disable Rewards</h2>
+                <div className="grid gap-3">
+                  <ToggleCard 
+                    icon={Video} 
+                    label="Video Points" 
+                    description="Earn points for watching videos" 
+                    checked={gamificationSettings.enableVideoPoints} 
+                    onChange={(val) => setGamificationSettings({...gamificationSettings, enableVideoPoints: val})} 
+                    colorClass="bg-blue-500" 
+                  />
+                  <ToggleCard 
+                    icon={Bot} 
+                    label="Chatbot Points" 
+                    description="Earn points for asking questions" 
+                    checked={gamificationSettings.enableChatbotPoints} 
+                    onChange={(val) => setGamificationSettings({...gamificationSettings, enableChatbotPoints: val})} 
+                    colorClass="bg-purple-500" 
+                  />
+                  <ToggleCard 
+                    icon={Trophy} 
+                    label="Badges" 
+                    description="Enable badge unlocking system" 
+                    checked={gamificationSettings.enableBadges} 
+                    onChange={(val) => setGamificationSettings({...gamificationSettings, enableBadges: val})} 
+                    colorClass="bg-yellow-500" 
+                  />
+                </div>
+              </KidsCard>
+
+              <Button onClick={saveGamificationSettings} className="w-full py-6 text-lg" disabled={savingGamification}>
+                <Save className="w-5 h-5 mr-2" />
+                {savingGamification ? "Saving..." : "Save Reward Settings"}
               </Button>
             </>
           )}

@@ -9,6 +9,7 @@ import Explore from "@/pages/Explore";
 import Shorts from "@/pages/Shorts";
 import Chat from "@/pages/Chat";
 import Chatbot from "@/pages/Chatbot";
+import Rewards from "@/pages/Rewards";
 import ParentDashboard from "@/pages/ParentDashboard";
 import CreatorDashboard from "@/pages/CreatorDashboard";
 import Login from "@/pages/Login";
@@ -61,6 +62,9 @@ function Router() {
       </Route>
       <Route path="/chatbot">
         <ProtectedRoute component={Chatbot} roles={["child"]} />
+      </Route>
+      <Route path="/rewards">
+        <ProtectedRoute component={Rewards} roles={["child"]} />
       </Route>
       <Route path="/dashboard">
         <ProtectedRoute component={ParentDashboard} roles={["parent"]} />
