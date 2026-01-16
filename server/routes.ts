@@ -400,7 +400,7 @@ export async function registerRoutes(
           "Authorization": `Bearer ${OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "gpt-5",
+          model: "gpt-4o-mini",
           messages: [
             {
               role: "system",
@@ -408,11 +408,19 @@ export async function registerRoutes(
             },
             { role: "user", content: message }
           ],
-          max_completion_tokens: 200,
+          max_tokens: 200,
         }),
       });
 
       const data = await response.json();
+      
+      if (data.error) {
+        console.error("OpenAI API error:", data.error);
+        const errorResponse = "I'm having a little trouble right now. Let's try again in a moment!";
+        await storage.createChatbotConversation(userId, message, errorResponse);
+        return res.json({ response: errorResponse });
+      }
+      
       const botResponse = data.choices?.[0]?.message?.content || "I'm here to help! What would you like to know?";
 
       await storage.createChatbotConversation(userId, message, botResponse);
