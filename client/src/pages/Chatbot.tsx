@@ -164,6 +164,16 @@ export default function Chatbot() {
       const data = await response.json();
       const botMessage: ChatMessage = { role: "bot", content: data.response };
       setMessages((prev) => [...prev, botMessage]);
+      
+      // Award points for asking chatbot a question
+      try {
+        await fetch("/api/gamification/chatbot-question", {
+          method: "POST",
+          headers: getAuthHeader(),
+        });
+      } catch (err) {
+        console.log("Points not awarded:", err);
+      }
     } catch (err) {
       console.error("Chatbot error:", err);
       setMessages((prev) => [...prev, { role: "bot", content: "Oops! Something went wrong. Let's try again!" }]);

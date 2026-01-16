@@ -59,6 +59,19 @@ export default function Explore() {
     fetchVideos(query);
   };
 
+  const handleVideoWatch = async (video: Video) => {
+    setSelectedVideo(video);
+    // Award points for watching video
+    try {
+      await fetch("/api/gamification/video-watched", {
+        method: "POST",
+        headers: getAuthHeader(),
+      });
+    } catch (err) {
+      console.log("Points not awarded:", err);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="text-center space-y-2">
@@ -127,7 +140,7 @@ export default function Explore() {
             <KidsCard
               key={video.id}
               className="cursor-pointer hover:scale-105 transition-transform overflow-hidden"
-              onClick={() => setSelectedVideo(video)}
+              onClick={() => handleVideoWatch(video)}
             >
               <div className="relative">
                 <img
