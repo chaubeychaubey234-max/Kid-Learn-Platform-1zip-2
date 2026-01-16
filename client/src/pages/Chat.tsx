@@ -27,6 +27,7 @@ interface CallState {
   type: "voice" | "video" | null;
   isOutgoing: boolean;
   remoteUserId: number | null;
+  status: "idle" | "calling" | "ringing" | "connected";
 }
 
 export default function Chat() {
@@ -37,7 +38,7 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [callState, setCallState] = useState<CallState>({ active: false, type: null, isOutgoing: false, remoteUserId: null });
+  const [callState, setCallState] = useState<CallState>({ active: false, type: null, isOutgoing: false, remoteUserId: null, status: "idle" });
   const [incomingCall, setIncomingCall] = useState<{ fromUserId: number; callType: "voice" | "video"; sdp: RTCSessionDescriptionInit } | null>(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendUsername, setFriendUsername] = useState("");
@@ -162,6 +163,7 @@ export default function Chat() {
       
       if (data.type === "call-answer" && peerConnectionRef.current) {
         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        setCallState(prev => ({ ...prev, status: "connected" }));
       }
       
       if (data.type === "ice-candidate" && peerConnectionRef.current) {
@@ -296,7 +298,7 @@ export default function Chat() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       
-      setCallState({ active: true, type, isOutgoing: true, remoteUserId: friendUserId });
+      setCallState({ active: true, type, isOutgoing: true, remoteUserId: friendUserId, status: "calling" });
       
       ws.send(JSON.stringify({
         type: "call-offer",
@@ -335,7 +337,7 @@ export default function Chat() {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
-      setCallState({ active: true, type: incomingCall.callType, isOutgoing: false, remoteUserId: incomingCall.fromUserId });
+      setCallState({ active: true, type: incomingCall.callType, isOutgoing: false, remoteUserId: incomingCall.fromUserId, status: "connected" });
       setIncomingCall(null);
       
       ws.send(JSON.stringify({
@@ -390,7 +392,7 @@ export default function Chat() {
     }
     
     remoteUserIdRef.current = null;
-    setCallState({ active: false, type: null, isOutgoing: false, remoteUserId: null });
+    setCallState({ active: false, type: null, isOutgoing: false, remoteUserId: null, status: "idle" });
   };
 
   if (loading) {
@@ -430,16 +432,27 @@ export default function Chat() {
       {callState.active && (
         <div className="fixed inset-0 bg-black z-40 flex flex-col">
           <div className="flex-1 flex items-center justify-center gap-4 p-4">
-            {callState.type === "video" && (
+            {callState.status === "calling" && (
+              <div className="text-center text-white">
+                {callState.type === "video" ? (
+                  <Video className="w-24 h-24 mx-auto mb-4 animate-pulse text-blue-400" />
+                ) : (
+                  <Phone className="w-24 h-24 mx-auto mb-4 animate-pulse text-green-400" />
+                )}
+                <p className="text-2xl font-bold mb-2">Calling...</p>
+                <p className="text-muted-foreground">Waiting for answer</p>
+              </div>
+            )}
+            {callState.status === "connected" && callState.type === "video" && (
               <>
-                <video ref={remoteVideoRef} autoPlay playsInline className="max-h-full max-w-full rounded-lg" />
-                <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-24 right-4 w-32 h-24 rounded-lg" />
+                <video ref={remoteVideoRef} autoPlay playsInline className="max-h-full max-w-full rounded-lg bg-gray-800" />
+                <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-24 right-4 w-32 h-24 rounded-lg border-2 border-white" />
               </>
             )}
-            {callState.type === "voice" && (
+            {callState.status === "connected" && callState.type === "voice" && (
               <div className="text-center text-white">
-                <Phone className="w-24 h-24 mx-auto mb-4 animate-pulse" />
-                <p className="text-xl">Voice call in progress...</p>
+                <Phone className="w-24 h-24 mx-auto mb-4 text-green-400" />
+                <p className="text-xl">Voice call connected</p>
               </div>
             )}
           </div>
