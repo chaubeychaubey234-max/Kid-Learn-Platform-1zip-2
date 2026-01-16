@@ -38,7 +38,7 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [callState, setCallState] = useState<CallState>({ active: false, type: null, isOutgoing: false, remoteUserId: null });
-  const [incomingCall, setIncomingCall] = useState<{ fromUserId: number; callType: "voice" | "video" } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ fromUserId: number; callType: "voice" | "video"; sdp: RTCSessionDescriptionInit } | null>(null);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendUsername, setFriendUsername] = useState("");
   const [addingFriend, setAddingFriend] = useState(false);
@@ -156,7 +156,7 @@ export default function Chat() {
       }
       
       if (data.type === "call-offer") {
-        setIncomingCall({ fromUserId: data.fromUserId, callType: data.callType });
+        setIncomingCall({ fromUserId: data.fromUserId, callType: data.callType, sdp: data.sdp });
       }
       
       if (data.type === "call-answer" && peerConnectionRef.current) {
@@ -325,6 +325,9 @@ export default function Chat() {
       const pc = initializePeerConnection();
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
       
+      // Must set remote description (the offer) before creating answer
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp));
+      
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
@@ -338,6 +341,7 @@ export default function Chat() {
       }));
     } catch (err) {
       console.error("Failed to accept call:", err);
+      alert("Could not access camera/microphone. Please check permissions.");
     }
   };
 
