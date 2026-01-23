@@ -7,6 +7,7 @@ import { z } from "zod";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { authenticateJWT, authorizeParent } from "./auth-middleware";
+import { searchYouTubeForKids } from "./youtubeSafeSearch";
 import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
@@ -408,39 +409,33 @@ export async function registerRoutes(
     res.json(categories);
   });
 
-  app.get(api.explore.search.path, async (req, res) => {
-    try {
-      const { q, category } = req.query;
-      const searchQuery = q || category || "kids educational videos";
-      
-      const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-      if (!YOUTUBE_API_KEY) {
-        return res.json([]);
-      }
+  app.get("/api/explore/search", authenticateJWT, async (req, res) => {
+    const user = req.user!;
+    const query = String(req.query.q || "").trim();
 
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=20&q=${encodeURIComponent(searchQuery as string)}&type=video&safeSearch=strict&key=${YOUTUBE_API_KEY}`
-      );
-      
-      const data = await response.json();
-      
-      if (!data.items) {
-        return res.json([]);
-      }
-
-      const videos = data.items.map((item: any) => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        thumbnailUrl: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
-        channelTitle: item.snippet.channelTitle,
-        description: item.snippet.description,
-      }));
-
-      res.json(videos);
-    } catch (err) {
-      console.error("Explore search error:", err);
-      res.json([]);
+    if (!query) {
+      return res.json([]);
     }
+
+    // If child → enforce parental controls
+    if (user.role === "child") {
+      const settings = await storage.getSettings(user.id);
+
+      if (!settings || settings.allowExplore === false) {
+        return res.json([]);
+      }
+
+      const videos = await searchYouTubeForKids(
+        query,
+        settings.allowShorts ?? true
+      );
+
+      return res.json(videos);
+    }
+
+    // Parent / Creator get filtered but less strict
+    const videos = await searchYouTubeForKids(query, true);
+    return res.json(videos);
   });
 
   app.post(api.chatbot.chat.path, authenticateJWT, async (req, res) => {
