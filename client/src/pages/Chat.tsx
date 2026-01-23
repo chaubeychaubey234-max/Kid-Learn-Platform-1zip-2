@@ -62,6 +62,9 @@ export default function Chat() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
 
+  // ICE candidate queue for proper NAT traversal
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+
   const ICE_SERVERS = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
@@ -194,13 +197,34 @@ export default function Chat() {
       }
       
       if (data.type === "call-answer" && peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        console.log("Receivers after answer:", peerConnectionRef.current.getReceivers().map(r => r.track?.kind));
+        const pc = peerConnectionRef.current;
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        
+        // Flush pending ICE candidates now that remote description is set
+        for (const candidate of pendingIceCandidatesRef.current) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.warn("Failed to add queued ICE candidate:", err);
+          }
+        }
+        pendingIceCandidatesRef.current = [];
+        
+        console.log("Receivers after answer:", pc.getReceivers().map(r => r.track?.kind));
         setCallState(prev => ({ ...prev, status: "connected" }));
       }
       
       if (data.type === "ice-candidate" && peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+        const pc = peerConnectionRef.current;
+        
+        if (pc.remoteDescription) {
+          // Remote description exists, add candidate immediately
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        } else {
+          // Queue candidate until remote description is set
+          console.log("Queuing ICE candidate until remote description is available");
+          pendingIceCandidatesRef.current.push(data.candidate);
+        }
       }
       
       if (data.type === "call-end" || data.type === "call-reject") {
@@ -381,6 +405,10 @@ export default function Chat() {
       }
     };
     
+    pc.onicegatheringstatechange = () => {
+      console.log("ICE gathering:", pc.iceGatheringState);
+    };
+    
     pc.oniceconnectionstatechange = () => {
       console.log("ICE connection state:", pc.iceConnectionState);
       if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
@@ -444,6 +472,9 @@ export default function Chat() {
     try {
       console.log("Starting", type, "call to user:", friendUserId);
       
+      // Reset ICE candidate queue for new call
+      pendingIceCandidatesRef.current = [];
+      
       // Reset remote stream for new call
       remoteStreamRef.current = null;
       
@@ -490,6 +521,9 @@ export default function Chat() {
     try {
       console.log("Accepting", incomingCall.callType, "call from user:", incomingCall.fromUserId);
       
+      // Reset ICE candidate queue for new call
+      pendingIceCandidatesRef.current = [];
+      
       // Reset remote stream for new call
       remoteStreamRef.current = null;
       
@@ -515,6 +549,16 @@ export default function Chat() {
       
       // Must set remote description (the offer) before creating answer
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp));
+      
+      // Flush any ICE candidates that arrived before remote description
+      for (const candidate of pendingIceCandidatesRef.current) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+          console.warn("Failed to add queued ICE candidate:", err);
+        }
+      }
+      pendingIceCandidatesRef.current = [];
       
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -586,6 +630,9 @@ export default function Chat() {
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = null;
     }
+    
+    // Clear ICE candidate queue
+    pendingIceCandidatesRef.current = [];
     
     remoteUserIdRef.current = null;
     setCallState({ active: false, type: null, isOutgoing: false, remoteUserId: null, status: "idle" });
