@@ -9,6 +9,7 @@ import bcrypt from "bcrypt";
 import { authenticateJWT, authorizeParent } from "./auth-middleware";
 import { searchYouTubeForKids } from "./youtubeSafeSearch";
 import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
+import { filterMessage } from "./chatFilter"; 
 
 const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
 const SALT_ROUNDS = 10;
@@ -388,14 +389,43 @@ export async function registerRoutes(
   });
 
   app.post(api.messages.send.path, authenticateJWT, async (req, res) => {
-    try {
-      const message = await storage.sendMessage(req.body);
-      res.status(201).json(message);
-    } catch (err) {
-      console.error("Send message error:", err);
-      res.status(500).json({ message: "Internal server error" });
+  try {
+    const { senderId, receiverId, content, fileUrl, fileType, fileName } = req.body;
+
+    if (!content || typeof content !== "string") {
+      return res.status(400).json({ message: "Invalid message content" });
     }
-  });
+
+    // 🔹 CHECK MESSAGE
+    const cleanContent = filterMessage(content);
+
+    // 🚫 BLOCK MESSAGE IF FILTERED
+    if (cleanContent !== content) {
+      return res.status(400).json({
+        blocked: true,
+        warning: "⚠️ Please keep the chat kind and safe. This message was not sent."
+      });
+    }
+
+    // ✅ SAVE & SEND ONLY IF CLEAN
+    const message = await storage.sendMessage({
+      senderId,
+      receiverId,
+      content,
+      fileUrl,
+      fileType,
+      fileName,
+    });
+
+    res.status(201).json(message);
+
+  } catch (err) {
+    console.error("Send message error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+  
 
   app.get(api.explore.categories.path, (_req, res) => {
     const categories = [
