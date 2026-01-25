@@ -19,8 +19,17 @@ import { useAuth, AuthProvider } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { KidsCard } from "@/components/kids-card";
 import { Lock } from "lucide-react";
+import Navigation from "./components/Navigation";
 
-function ProtectedRoute({ component: Component, roles }: { component: any, roles?: string[] }) {
+/* ---------------- Protected Route ---------------- */
+
+function ProtectedRoute({
+  component: Component,
+  roles,
+}: {
+  component: any;
+  roles?: string[];
+}) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -50,6 +59,8 @@ function ProtectedRoute({ component: Component, roles }: { component: any, roles
   return <Component />;
 }
 
+/* ---------------- Router ---------------- */
+
 function Router() {
   return (
     <Switch>
@@ -57,21 +68,27 @@ function Router() {
       <Route path="/categories" component={Categories} />
       <Route path="/explore" component={Explore} />
       <Route path="/shorts" component={Shorts} />
+
       <Route path="/chat">
         <ProtectedRoute component={Chat} roles={["child"]} />
       </Route>
+
       <Route path="/chatbot">
         <ProtectedRoute component={Chatbot} roles={["child"]} />
       </Route>
+
       <Route path="/rewards">
         <ProtectedRoute component={Rewards} roles={["child"]} />
       </Route>
+
       <Route path="/dashboard">
         <ProtectedRoute component={ParentDashboard} roles={["parent"]} />
       </Route>
+
       <Route path="/creator">
         <ProtectedRoute component={CreatorDashboard} roles={["creator"]} />
       </Route>
+
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route component={NotFound} />
@@ -79,14 +96,19 @@ function Router() {
   );
 }
 
-function App() {
+/* ---------------- MAIN APP ---------------- */
+
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TooltipProvider>
-          <Layout>
-            <Router />
-          </Layout>
+          <div className="min-h-screen bg-white dark:bg-gray-900 text-black dark:text-white">
+            <Navigation />
+            <Layout>
+              <Router />
+            </Layout>
+          </div>
           <Toaster />
         </TooltipProvider>
       </AuthProvider>
@@ -94,4 +116,3 @@ function App() {
   );
 }
 
-export default App;
