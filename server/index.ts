@@ -87,6 +87,12 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  // Warn if Tavily key is not set — non-fatal, we have a Wikipedia fallback but
+  // the full Tavily experience requires the API key.
+  if (!process.env.TAVILY_API_KEY) {
+    console.warn("TAVILY_API_KEY is not set — /api/safe-search will fallback to safe alternatives (e.g., Wikipedia)");
+  }
+
   httpServer.listen(
     {
       port,

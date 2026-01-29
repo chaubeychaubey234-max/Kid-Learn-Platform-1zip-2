@@ -359,11 +359,27 @@ export class DatabaseStorage implements IStorage {
   async getOrCreateGamificationSettings(childId: number): Promise<GamificationSettings> {
     let settings = await this.getGamificationSettings(childId);
     if (!settings) {
-      const [newSettings] = await db.insert(gamificationSettings).values({
-        childId,
-      }).returning();
-      settings = newSettings;
+      try {
+        const [newSettings] = await db.insert(gamificationSettings).values({
+          childId,
+        }).returning();
+        settings = newSettings;
+      } catch (err: any) {
+        // Race condition: another process may have inserted the row concurrently.
+        // Postgres unique constraint error code is '23505'. If that happens, re-query.
+        if (err?.code === '23505') {
+          settings = await this.getGamificationSettings(childId);
+        } else {
+          throw err;
+        }
+      }
     }
+
+    if (!settings) {
+      // Defensive fallback to avoid returning undefined
+      throw new Error("Failed to create or fetch gamification settings");
+    }
+
     return settings;
   }
 

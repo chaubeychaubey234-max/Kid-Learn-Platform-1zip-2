@@ -10,6 +10,7 @@ import { authenticateJWT, authorizeParent } from "./auth-middleware";
 import { searchYouTubeForKids } from "./youtubeSafeSearch";
 import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
 import { filterMessage } from "./chatFilter"; 
+import { tavilySearch } from "./tavilySearch"; 
 
 const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
 const SALT_ROUNDS = 10;
@@ -466,6 +467,365 @@ export async function registerRoutes(
     // Parent / Creator get filtered but less strict
     const videos = await searchYouTubeForKids(query, true);
     return res.json(videos);
+  });
+
+  // ---------------- Safe, kid-friendly web search ----------------
+  // This endpoint is protected by JWT and performs multiple server-side checks
+  // to ensure queries are kid-appropriate and results come only from a
+  // curated whitelist of educational domains.
+  app.get("/api/safe-search", authenticateJWT, async (req, res) => {
+    try {
+      const rawQuery = String(req.query.q || "").trim();
+
+      // Minimum length check
+      if (!rawQuery || rawQuery.length < 3) {
+        return res.json({ blocked: true, reason: "Query too short", results: [] });
+      }
+
+      // Keyword blacklist — block if any whole word or phrase matches. This list
+      // is intentionally comprehensive and conservative for child safety. We perform
+      // robust normalization to catch obfuscated queries (leet-speak, punctuation,
+      // spacing tricks like "s e x"). We also return a category-based reason.
+
+      // Map keyword => category for clearer block reasons
+      const categoryMap: Record<string, string> = {
+        // sexual / explicit content
+        "sex": "sexual content",
+        "porn": "sexual content",
+        "porno": "sexual content",
+        "pornography": "sexual content",
+        "xxx": "sexual content",
+        "nude": "sexual content",
+        "naked": "sexual content",
+        "boobs": "sexual content",
+        "breasts": "sexual content",
+        "vagina": "sexual content",
+        "penis": "sexual content",
+        "dick": "sexual content",
+        "blowjob": "sexual content",
+        "handjob": "sexual content",
+        "masturbation": "sexual content",
+        "orgasm": "sexual content",
+        "fetish": "sexual content",
+        "hentai": "sexual content",
+        "onlyfans": "sexual content",
+        "camgirl": "sexual content",
+        "escort": "sexual content",
+        "prostitution": "sexual content",
+
+        // violence / self-harm
+        "kill": "violent content",
+        "murder": "violent content",
+        "death": "violent content",
+        "suicide": "self-harm content",
+        "self harm": "self-harm content",
+        "cutting": "self-harm content",
+        "blood": "violent content",
+        "gore": "violent content",
+        "torture": "violent content",
+        "rape": "violent content",
+        "assault": "violent content",
+        "abuse": "violent content",
+        "shooting": "violent content",
+        "stabbing": "violent content",
+        "bomb": "violent content",
+        "explosion": "violent content",
+
+        // weapons
+        "gun": "weapons",
+        "pistol": "weapons",
+        "rifle": "weapons",
+        "shotgun": "weapons",
+        "sniper": "weapons",
+        "knife": "weapons",
+        "dagger": "weapons",
+        "sword": "weapons",
+        "grenade": "weapons",
+        "missile": "weapons",
+        "weapon": "weapons",
+        "ammunition": "weapons",
+        "bullets": "weapons",
+
+        // drugs & alcohol
+        "drug": "drugs",
+        "drugs": "drugs",
+        "weed": "drugs",
+        "marijuana": "drugs",
+        "cannabis": "drugs",
+        "cocaine": "drugs",
+        "heroin": "drugs",
+        "lsd": "drugs",
+        "ecstasy": "drugs",
+        "meth": "drugs",
+        "alcohol": "drugs",
+        "beer": "drugs",
+        "wine": "drugs",
+        "vodka": "drugs",
+        "whiskey": "drugs",
+        "smoking": "drugs",
+        "cigarette": "drugs",
+        "vape": "drugs",
+        "tobacco": "drugs",
+
+        // gambling
+        "gambling": "gambling",
+        "casino": "gambling",
+        "bet": "gambling",
+        "betting": "gambling",
+        "poker": "gambling",
+        "blackjack": "gambling",
+        "roulette": "gambling",
+        "lottery": "gambling",
+        "jackpot": "gambling",
+        "slots": "gambling",
+
+        // extremism / politics
+        "terror": "extremism",
+        "terrorism": "extremism",
+        "terrorist": "extremism",
+        "war": "extremism",
+        "army": "extremism",
+        "isis": "extremism",
+        "taliban": "extremism",
+        "nazi": "extremism",
+        "hitler": "extremism",
+        "extremism": "extremism",
+        "politics": "political content",
+        "election": "political content",
+        "vote": "political content",
+        "voting": "political content",
+        "government": "political content",
+        "prime minister": "political content",
+        "president": "political content",
+        "bjp": "political content",
+        "congress": "political content",
+        "republican": "political content",
+        "democrat": "political content",
+        "protest": "political content",
+        "rally": "political content",
+
+        // hacking / scams
+        "hack": "illicit activity",
+        "hacking": "illicit activity",
+        "crack": "illicit activity",
+        "piracy": "illicit activity",
+        "cheat codes": "illicit activity",
+        "darknet": "illicit activity",
+        "deep web": "illicit activity",
+        "scam": "illicit activity",
+        "fraud": "illicit activity",
+        "fake money": "illicit activity",
+
+        // mental health / disorders
+        "depression": "sensitive health",
+        "anxiety disorder": "sensitive health",
+        "panic attack": "sensitive health",
+        "eating disorder": "sensitive health",
+        "bulimia": "sensitive health",
+        "anorexia": "sensitive health",
+      };
+
+      // Prepare query normalization to catch obfuscation like 's3x' or 's e x'
+      const normalizeQuery = (s: string) => {
+        const map: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '2': 'r', '8': 'b', '9': 'g' };
+        let t = String(s || "").toLowerCase();
+        // Replace non-alphanumeric with spaces (keeps word boundaries)
+        t = t.replace(/[^a-z0-9]+/g, ' ');
+        // Map leet digits to letters
+        t = t.split('').map(ch => map[ch] ?? ch).join('');
+        // Collapse spaces
+        t = t.replace(/\s+/g, ' ').trim();
+        return t;
+      };
+
+      const normalized = normalizeQuery(rawQuery);
+      const normalizedNoSpaces = normalized.replace(/\s+/g, '');
+
+      // Build a regex that matches any of the blacklist terms (escaped). We test
+      // against both raw and normalized queries so we catch obfuscation.
+      const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+      const terms = Object.keys(categoryMap);
+      const blkRegex = new RegExp("\\b(" + terms.map(escapeRegExp).join("|") + ")\\b", "i");
+
+      // Test original raw query first, then normalized versions
+      const rawTest = blkRegex.test(rawQuery);
+      const normTest = blkRegex.test(normalized);
+      const noSpaceTest = terms.some(t => normalizedNoSpaces.includes(t.replace(/\s+/g, '')));
+
+      if (rawTest || normTest || noSpaceTest) {
+        // Determine which term matched so we can give a category-based reason
+        let matchedTerm = null;
+        let matchedCategory = 'blocked content';
+
+        // Try to find match in original
+        for (const term of terms) {
+          const re = new RegExp("\\b" + escapeRegExp(term) + "\\b", "i");
+          if (re.test(rawQuery) || re.test(normalized) || normalizedNoSpaces.includes(term.replace(/\s+/g, '')) ) {
+            matchedTerm = term;
+            matchedCategory = categoryMap[term] || matchedCategory;
+            break;
+          }
+        }
+
+        console.warn(`Safe search blocked query - term: ${matchedTerm} category: ${matchedCategory}`);
+        return res.json({ blocked: true, reason: `Query blocked: ${matchedCategory}`, results: [] });
+      }
+
+      // Block queries that explicitly mention known adult/porn domains or keywords
+      const adultDomainPatterns = [
+        'porn', 'pornhub', 'xvideos', 'xnxx', 'youporn', 'redtube', 'tube8', 'brazzers', 'xhamster',
+        'sex', 'xxx', 'adult', 'onlyfans', 'camgirl', 'cam', 'escort', 'prostitution'
+      ];
+
+      const containsAdultDomain = (s: string) => {
+        const lower = (s || '').toLowerCase();
+        return adultDomainPatterns.some(p => lower.includes(p));
+      };
+
+      if (containsAdultDomain(rawQuery) || containsAdultDomain(normalized) || containsAdultDomain(normalizedNoSpaces)) {
+        console.warn(`Safe search blocked query for adult domain/keyword: ${rawQuery}`);
+        return res.json({ blocked: true, reason: 'Query contains blocked site or adult content', results: [] });
+      }
+
+      // Check for document-utility queries (merge/split/convert PDFs, etc.)
+      const isDocumentUtilityQuery = (q: string) => {
+        const n = q.toLowerCase();
+        // normalized match for phrases like "merge pdf", "convert to pdf", "make pdf"
+        return /\b(merge|combine|split|compress|compress pdf|convert|convert to pdf|make pdf|create pdf|pdf editor|pdf merge|merge pdfs|split pdfs|combine pdfs|convert doc to pdf|convert image to pdf|ocr pdf)\b/.test(n);
+      };
+
+      if (isDocumentUtilityQuery(rawQuery) || isDocumentUtilityQuery(normalized)) {
+        // Curated, kid-safe tool suggestions. We intentionally bypass the wider
+        // search API for these utility tasks to avoid surfacing unsafe third-party
+        // content — instead we return known, reputable tools and provide guidance.
+        const curated = [
+          {
+            title: "Merge PDFs — Smallpdf",
+            url: "https://smallpdf.com/merge-pdf",
+            content: "Upload PDF files, arrange pages, and download your merged PDF. Always ask a parent before uploading private files.",
+          },
+          {
+            title: "Merge PDF — iLovePDF",
+            url: "https://www.ilovepdf.com/merge_pdf",
+            content: "Combine multiple PDFs into one; no account needed for basic merges.",
+          },
+          {
+            title: "PDFsam Basic (Desktop)",
+            url: "https://pdfsam.org/",
+            content: "Free open-source desktop tool to split and merge PDFs without uploading files. Good for privacy-minded usage.",
+          },
+          {
+            title: "Adobe: Merge PDF Online",
+            url: "https://www.adobe.com/acrobat/online/merge-pdf.html",
+            content: "Trusted provider with an online merge tool and additional PDF features.",
+          },
+        ].slice(0, 6);
+
+        res.setHeader('X-Safe-Search-Source', 'curated-tools');
+        return res.json({ blocked: false, results: curated });
+      }
+
+      // Call Tavily helper and filter results
+      const { results: rawResults, source } = await tavilySearch(rawQuery, 6);
+      // Informational header to help debugging which source was used (tavily or fallback)
+      res.setHeader('X-Safe-Search-Source', source);
+
+      // Whitelisted educational domains (only allow these hosts)
+      const whitelist = [
+        "wikipedia.org",
+        "khanacademy.org",
+        "kids.britannica.com",
+        "nationalgeographic.com",
+        "nasa.gov",
+        "pbskids.org",
+        "timeforkids.com",
+      ];
+
+      const filtered = (rawResults || []).filter((r) => {
+        try {
+          const host = new URL(r.url).hostname.toLowerCase();
+          // Explicitly block known adult hosts even if they somehow appear
+          if (adultDomainPatterns.some(p => host.includes(p))) return false;
+          return whitelist.some((d) => host === d || host.endsWith('.' + d));
+        } catch (e) {
+          return false;
+        }
+      }).slice(0, 8);
+
+      // If results existed but were all filtered due to adult domains, make that explicit
+      const hadAdultOnlyResults = (rawResults || []).length > 0 && filtered.length === 0 && (rawResults || []).some(r => {
+        try { return adultDomainPatterns.some(p => new URL(r.url).hostname.toLowerCase().includes(p)); } catch (e) { return false; }
+      });
+
+      if (hadAdultOnlyResults) {
+        return res.json({ blocked: true, reason: 'Search returned only blocked websites', results: [] });
+      }
+
+      return res.json({ blocked: false, results: filtered.map(r => ({ title: r.title, url: r.url, content: r.content })) });
+
+    } catch (err) {
+      console.error("Safe search error:", err);
+      // Never crash. Return a useful empty response instead of exposing internals.
+      return res.json({ blocked: false, results: [] });
+    }
+  });
+
+  app.get("/api/youtube/video-info", authenticateJWT, async (req, res) => {
+    try {
+      const videoId = String(req.query.videoId || "").trim();
+      if (!videoId) return res.status(400).json({ message: "videoId required" });
+
+      const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+      if (!YOUTUBE_API_KEY) return res.status(500).json({ message: "YouTube API key not configured" });
+
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails,snippet&id=${encodeURIComponent(videoId)}&key=${YOUTUBE_API_KEY}`;
+      const r = await fetch(url);
+      const data = await r.json().catch(() => ({}));
+      const item = (data.items && data.items[0]) || null;
+
+      if (!item) {
+        console.warn(`video-info: video not found for id=${videoId}`);
+        return res.status(404).json({ playable: false, reason: "Video not found" });
+      }
+
+      const embeddable = item.status?.embeddable !== false;
+      const privacy = item.status?.privacyStatus || 'unknown';
+      const durationIso = item.contentDetails?.duration || null;
+      const regionBlocked = Boolean(item.contentDetails?.regionRestriction && (item.contentDetails.regionRestriction.blocked || item.contentDetails.regionRestriction.allowed));
+
+      const parseDuration = (iso: string | null) => {
+        if (!iso) return 0;
+        const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (!match) return 0;
+        const hours = parseInt(match[1] || '0', 10);
+        const minutes = parseInt(match[2] || '0', 10);
+        const seconds = parseInt(match[3] || '0', 10);
+        return hours * 3600 + minutes * 60 + seconds;
+      };
+
+      const duration = parseDuration(durationIso);
+      const playable = embeddable && privacy === 'public' && !regionBlocked;
+
+      // Log detailed info for diagnosis (avoiding exposing keys)
+      console.info(`video-info: id=${videoId} embeddable=${embeddable} privacy=${privacy} duration=${duration}s regionBlocked=${regionBlocked}`);
+
+      // Return sanitized details to client for better UI decisions
+      return res.json({
+        playable,
+        embeddable,
+        privacy,
+        duration,
+        regionBlocked,
+        snippet: {
+          title: item.snippet?.title,
+          channelTitle: item.snippet?.channelTitle,
+        }
+      });
+
+    } catch (err) {
+      console.error('Video info error:', err);
+      return res.status(500).json({ playable: false, reason: 'Internal server error' });
+    }
   });
 
   app.post(api.chatbot.chat.path, authenticateJWT, async (req, res) => {

@@ -60,15 +60,39 @@ export default function Explore() {
   };
 
   const handleVideoWatch = async (video: Video) => {
-    setSelectedVideo(video);
-    // Award points for watching video
+    // Before opening the embedded player, check server-side whether this
+    // video is embeddable and playable in our environment to avoid YouTube Error 153.
     try {
-      await fetch("/api/gamification/video-watched", {
-        method: "POST",
+      const infoRes = await fetch(`/api/youtube/video-info?videoId=${encodeURIComponent(video.id)}`, {
         headers: getAuthHeader(),
       });
+      const info = await infoRes.json();
+
+      if (!info.playable) {
+        // Show an inline, friendly message with a YouTube fallback link instead of alert
+        setSelectedVideo({
+          ...video,
+          notPlayable: true,
+          videoInfo: info,
+        } as any);
+        return;
+      }
+
+      setSelectedVideo({ ...video, notPlayable: false } as any);
+
+      // Award points for watching video
+      try {
+        await fetch("/api/gamification/video-watched", {
+          method: "POST",
+          headers: getAuthHeader(),
+        });
+      } catch (err) {
+        console.log("Points not awarded:", err);
+      }
     } catch (err) {
-      console.log("Points not awarded:", err);
+      console.error("Failed to validate video before play:", err);
+      // If validation fails for some reason, fall back to attempting to play
+      setSelectedVideo(video);
     }
   };
 
@@ -94,6 +118,12 @@ export default function Explore() {
         </Button>
       </div>
 
+      <div className="text-center">
+        <a href="/safe-explore">
+          <Button variant="outline">Try Safe Web Search</Button>
+        </a>
+      </div>
+
       <div className="flex flex-wrap justify-center gap-3">
         {categories.map((cat) => (
           <Button
@@ -111,12 +141,26 @@ export default function Explore() {
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-4 max-w-4xl w-full">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
+              {selectedVideo.notPlayable ? (
+              <div className="p-6 text-center">
+                <h3 className="font-bold text-lg">This video cannot be played here</h3>
+                <p className="text-muted-foreground mt-2">{selectedVideo.videoInfo?.snippet?.title || selectedVideo.title}</p>
+                <p className="text-sm text-muted-foreground mt-2">Reason: {selectedVideo.videoInfo?.embeddable === false ? 'Not embeddable' : selectedVideo.videoInfo?.privacy !== 'public' ? 'Not public' : selectedVideo.videoInfo?.regionBlocked ? 'Region restricted' : 'Not playable here'}</p>
+                <div className="mt-4 flex justify-center gap-2">
+                  <a href={`https://www.youtube.com/watch?v=${selectedVideo.id}`} target="_blank" rel="noreferrer">
+                    <Button>Open on YouTube</Button>
+                  </a>
+                  <Button variant="outline" onClick={() => setSelectedVideo(null)}>Close</Button>
+                </div>
+              </div>
+            ) : (
               <iframe
-                src={`https://www.youtube.com/embed/${selectedVideo.id}?autoplay=1`}
+                src={`https://www.youtube.com/embed/${selectedVideo.id}?autoplay=1&origin=${encodeURIComponent(window.location.origin)}`}
                 className="w-full h-full"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
+            )}
             </div>
             <div className="mt-4 flex justify-between items-center">
               <div>

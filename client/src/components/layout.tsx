@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload, Trophy } from "lucide-react";
+import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload, Trophy, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -10,6 +10,7 @@ export function Navbar() {
   const navItems = [
     { name: "Home", href: "/", icon: Home },
     { name: "Explore", href: "/explore", icon: Compass },
+    { name: "Safe Explore", href: "/safe-explore", icon: Search },
     { name: "Shorts", href: "/shorts", icon: Film },
     ...(user?.role === "child" ? [
       { name: "Chat", href: "/chat", icon: MessageCircle },

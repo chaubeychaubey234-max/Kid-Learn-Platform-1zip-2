@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Home from "@/pages/Home";
 import Categories from "@/pages/Categories";
 import Explore from "@/pages/Explore";
+import SafeExplore from "@/pages/SafeExplore";
 import Shorts from "@/pages/Shorts";
 import Chat from "@/pages/Chat";
 import Chatbot from "@/pages/Chatbot";
@@ -67,11 +68,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/categories" component={Categories} />
       <Route path="/explore" component={Explore} />
-      <Route path="/shorts" component={Shorts} />
-
-      <Route path="/chat">
-        <ProtectedRoute component={Chat} roles={["child"]} />
-      </Route>
+      <Route path="/safe-explore" component={SafeExplore} />
 
       <Route path="/chatbot">
         <ProtectedRoute component={Chatbot} roles={["child"]} />
