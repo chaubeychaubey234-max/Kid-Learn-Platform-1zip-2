@@ -21,6 +21,7 @@ import { Layout } from "@/components/layout";
 import { KidsCard } from "@/components/kids-card";
 import { Lock } from "lucide-react";
 import Navigation from "./components/Navigation";
+import Help from "@/pages/Help";
 
 /* ---------------- Protected Route ---------------- */
 
@@ -88,7 +89,11 @@ function Router() {
 
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/help">
+      <ProtectedRoute component={Help} roles={["child"]} />
+      </Route>
       <Route component={NotFound} />
+
     </Switch>
   );
 }
