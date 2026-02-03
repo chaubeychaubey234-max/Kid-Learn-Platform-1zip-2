@@ -21,7 +21,6 @@ import { Layout } from "@/components/layout";
 import { KidsCard } from "@/components/kids-card";
 import { Lock } from "lucide-react";
 import Navigation from "./components/Navigation";
-import Help from "@/pages/Help";
 
 /* ---------------- Protected Route ---------------- */
 
@@ -70,10 +69,6 @@ function Router() {
       <Route path="/categories" component={Categories} />
       <Route path="/explore" component={Explore} />
       <Route path="/safe-explore" component={SafeExplore} />
-      <Route path="/shorts" component={Shorts} />
-      <Route path="/chat">
-        <ProtectedRoute component={Chat} roles={["child"]} />
-      </Route>
 
       <Route path="/chatbot">
         <ProtectedRoute component={Chatbot} roles={["child"]} />
@@ -93,11 +88,7 @@ function Router() {
 
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
-      <Route path="/help">
-      <ProtectedRoute component={Help}  />
-      </Route>
       <Route component={NotFound} />
-
     </Switch>
   );
 }
