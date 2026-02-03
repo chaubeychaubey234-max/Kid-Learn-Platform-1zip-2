@@ -1,3 +1,4 @@
+import Help from "@/pages/Help";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -70,6 +71,14 @@ function Router() {
       <Route path="/explore" component={Explore} />
       <Route path="/safe-explore" component={SafeExplore} />
 
+      <Route path="/chat">
+        <ProtectedRoute component={Chat} roles={["child"]} />
+      </Route>
+
+      <Route path="/shorts">
+        <ProtectedRoute component={Shorts} roles={["child"]} />
+      </Route>
+
       <Route path="/chatbot">
         <ProtectedRoute component={Chatbot} roles={["child"]} />
       </Route>
@@ -88,6 +97,9 @@ function Router() {
 
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
+      <Route path="/help">
+        <ProtectedRoute component={Help} roles={["child", "parent"]} />
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -112,4 +124,3 @@ export default function App() {
     </QueryClientProvider>
   );
 }
-
