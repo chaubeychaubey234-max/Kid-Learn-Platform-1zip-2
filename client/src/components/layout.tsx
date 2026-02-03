@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload, Trophy, Search } from "lucide-react";
+import { Home, Compass, Shield, Sparkles, LogOut, MessageCircle, Bot, Video, Film, Upload, Trophy, Search, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -12,6 +12,10 @@ export function Navbar() {
     { name: "Explore", href: "/explore", icon: Compass },
     { name: "Safe Explore", href: "/safe-explore", icon: Search },
     { name: "Shorts", href: "/shorts", icon: Film },
+    // Help link for both child and parent roles
+    ...(user?.role === "child" || user?.role === "parent" ? [
+      { name: "Help", href: "/help", icon: HelpCircle },
+    ] : []),
     ...(user?.role === "child" ? [
       { name: "Chat", href: "/chat", icon: MessageCircle },
       { name: "AI Buddy", href: "/chatbot", icon: Bot },
