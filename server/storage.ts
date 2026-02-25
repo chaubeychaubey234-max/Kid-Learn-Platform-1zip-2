@@ -8,7 +8,7 @@ import {
   type Friend, type FriendRequest, type Message, type InsertMessage,
   type CallHistory, type ChatbotConversation,
   type ChildPoints, type PointTransaction, type Badge, type EarnedBadge, type GamificationSettings
-} from "@shared/schema";
+} from "../shared/schema";
 import { eq, and, or, desc, lte } from "drizzle-orm";
 
 export interface IStorage {
@@ -313,7 +313,7 @@ export class DatabaseStorage implements IStorage {
     const newCount = (current.dailyChatbotQuestions || 0) + 1;
     await db.update(childPoints)
       .set({ dailyChatbotQuestions: newCount })
-      .where(eq(childPoints.childId, childId));
+        .where(eq(childPoints.childId, childId));
     return newCount;
   }
 
@@ -418,4 +418,3 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
-

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema";
 
 const { Pool } = pg;
 
@@ -17,23 +17,31 @@ const requiredTables = ["users", "content", "badges"];
 export const pool = new Pool({
   connectionString: databaseUrl,
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: false, // Required for Neon
   },
-  max: isProduction ? 5 : 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
+  max: isProduction ? 5 : 10, // Connection pool size
+  idleTimeoutMillis: 30_000, // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 10_000, // Timeout after 10 seconds
 });
 
+// Handle pool errors to prevent crashes
 pool.on("error", (error) => {
   console.error("Unexpected PostgreSQL pool error:", error.message);
 });
 
+/**
+ * Verifies database connection and schema
+ * @throws {Error} If connection fails or required tables are missing
+ */
 export async function verifyDatabaseConnection(): Promise<void> {
   const client = await pool.connect();
 
   try {
+    // Test basic connection
     await client.query("SELECT 1");
+    console.log("✅ Database connection successful");
 
+    // Verify required tables exist
     const missingTables: string[] = [];
 
     for (const tableName of requiredTables) {
@@ -52,6 +60,8 @@ export async function verifyDatabaseConnection(): Promise<void> {
         `Database schema is missing required tables (${missingTables.join(", ")}). Run "npm run db:push" with DATABASE_URL pointing to your Neon database.`,
       );
     }
+
+    console.log("✅ Database schema verified");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown database error";
     throw new Error(`Failed to connect to the Neon database. ${message}`);
@@ -60,5 +70,9 @@ export async function verifyDatabaseConnection(): Promise<void> {
   }
 }
 
+// Initialize database connection with drizzle
 export const db = drizzle(pool, { schema });
 export type Database = typeof db;
+
+// Export for use in other modules
+export default db;
