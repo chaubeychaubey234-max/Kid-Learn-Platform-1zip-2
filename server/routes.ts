@@ -8,7 +8,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { authenticateJWT, authorizeParent } from "./auth-middleware";
 import { searchYouTubeForKids } from "./youtubeSafeSearch";
-import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage";
+import { registerObjectStorageRoutes, ObjectStorageService } from "./replit_integrations/object_storage/index";
 import { filterMessage } from "./chatFilter"; 
 import { tavilySearch } from "./tavilySearch"; 
 
