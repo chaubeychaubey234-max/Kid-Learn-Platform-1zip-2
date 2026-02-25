@@ -4,6 +4,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 import { verifyDatabaseConnection } from "./db.js";
 import { createServer } from "http";
+import { setupVite } from "./vite.js";
+import { serveStatic } from "./static.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -65,12 +67,35 @@ const appReady = (async () => {
   await verifyDatabaseConnection();
   await registerRoutes(httpServer, app);
 
+  if (!process.env.VERCEL) {
+    if (process.env.NODE_ENV === "development") {
+      await setupVite(httpServer, app);
+    } else {
+      serveStatic(app);
+    }
+  }
+
   if (!process.env.TAVILY_API_KEY) {
     console.warn("TAVILY_API_KEY is not set — /api/safe-search will fallback to safe alternatives (e.g., Wikipedia)");
   }
 
   log("server initialized for Vercel serverless runtime");
 })();
+
+if (!process.env.VERCEL) {
+  const port = Number(process.env.PORT) || 5000;
+
+  appReady
+    .then(() => {
+      httpServer.listen(port, "0.0.0.0", () => {
+        log(`Server running on port ${port} in ${process.env.NODE_ENV || "development"} mode`);
+      });
+    })
+    .catch((error) => {
+      console.error("Server initialization failed:", error);
+      process.exit(1);
+    });
+}
 
 app.use(async (_req, _res, next) => {
   try {

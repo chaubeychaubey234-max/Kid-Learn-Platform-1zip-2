@@ -3,14 +3,20 @@ import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "default-secret-key";
 
-export interface AuthRequest extends Request {
-  user?: {
-    id: number;
-    role: string;
-  };
+type AuthUser = {
+  id: number;
+  role: string;
+};
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+    }
+  }
 }
 
-export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunction) {
+export function authenticateJWT(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
   if (authHeader) {
@@ -29,7 +35,7 @@ export function authenticateJWT(req: AuthRequest, res: Response, next: NextFunct
   }
 }
 
-export function authorizeParent(req: AuthRequest, res: Response, next: NextFunction) {
+export function authorizeParent(req: Request, res: Response, next: NextFunction) {
   if (req.user && req.user.role === "parent") {
     next();
   } else {
@@ -37,7 +43,7 @@ export function authorizeParent(req: AuthRequest, res: Response, next: NextFunct
   }
 }
 
-export function authorizeCreator(req: AuthRequest, res: Response, next: NextFunction) {
+export function authorizeCreator(req: Request, res: Response, next: NextFunction) {
   if (req.user && req.user.role === "creator") {
     next();
   } else {
