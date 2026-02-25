@@ -12,6 +12,7 @@ if (!databaseUrl) {
 }
 
 const isProduction = process.env.NODE_ENV === "production";
+const requiredTables = ["users", "content", "badges"];
 
 export const pool = new Pool({
   connectionString: databaseUrl,
@@ -28,13 +29,34 @@ pool.on("error", (error) => {
 });
 
 export async function verifyDatabaseConnection(): Promise<void> {
+  const client = await pool.connect();
+
   try {
-    const client = await pool.connect();
-    console.log('✅ Successfully connected to Neon PostgreSQL database');
-    client.release();
+    await client.query("SELECT 1");
+
+    const missingTables: string[] = [];
+
+    for (const tableName of requiredTables) {
+      const result = await client.query<{ table_ref: string | null }>(
+        "SELECT to_regclass($1) AS table_ref",
+        [`public.${tableName}`],
+      );
+
+      if (!result.rows[0]?.table_ref) {
+        missingTables.push(tableName);
+      }
+    }
+
+    if (missingTables.length > 0) {
+      throw new Error(
+        `Database schema is missing required tables (${missingTables.join(", ")}). Run "npm run db:push" with DATABASE_URL pointing to your Neon database.`,
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown database error";
     throw new Error(`Failed to connect to the Neon database. ${message}`);
+  } finally {
+    client.release();
   }
 }
 

@@ -20,14 +20,14 @@ In Vercel project settings, add:
 - `CEREBRAS_API_KEY` (if you use chatbot)
 - `YOUTUBE_API_KEY` (if you use YouTube features)
 
-## 3) Run migrations against Neon
+## 3) Run migrations against Neon (required)
 From your local machine (or CI) with `DATABASE_URL` pointing to Neon:
 
 ```bash
 npm run db:push
 ```
 
-This keeps the existing schema definitions in `shared/schema.ts` and applies them to Neon.
+This applies the existing schema from `shared/schema.ts` to Neon without changing the schema source.
 
 ## 4) Build and deploy
 Vercel should run your standard build command:
@@ -36,7 +36,23 @@ Vercel should run your standard build command:
 npm run build
 ```
 
-## 5) Connection failure behavior
+## 5) Local development with Neon
+Before `npm run dev`, make sure the Neon database has the tables created:
+
+```bash
+npm run db:push
+npm run dev
+```
+
+## 6) Troubleshooting
+If you see errors like `relation "users" does not exist` or `relation "badges" does not exist`, the database schema has not been pushed yet. Run:
+
+```bash
+npm run db:push
+```
+
+## 7) Connection failure behavior
 - The app fails fast on startup if `DATABASE_URL` is missing.
-- The app verifies database connectivity at startup.
+- The app verifies DB connectivity and checks required tables (`users`, `content`, `badges`) at startup.
+- Startup exits with a clear error if the schema is missing or the connection is unavailable.
 - Pool-level database errors are logged for easier diagnosis in Vercel logs.
